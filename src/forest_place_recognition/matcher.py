@@ -50,9 +50,14 @@ def top_k_retrieval(
     scores:
         Array of shape ``(M, K)`` with corresponding similarity scores.
     """
-    k = min(k, similarity.shape[1])
+    n_refs = similarity.shape[1]
+    k = min(k, n_refs)
+    if k == 0:
+        return np.empty((similarity.shape[0], 0), dtype=int), np.empty((similarity.shape[0], 0))
     # argpartition is O(N) per row, then we sort only the top-K
-    top_k_unsorted = np.argpartition(-similarity, k, axis=1)[:, :k]
+    # argpartition kth must be < array size
+    kth = min(k, n_refs) - 1
+    top_k_unsorted = np.argpartition(-similarity, kth, axis=1)[:, :k]
     # Gather the scores for the top-K candidates
     rows = np.arange(similarity.shape[0])[:, None]
     top_k_scores = similarity[rows, top_k_unsorted]

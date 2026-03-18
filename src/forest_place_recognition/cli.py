@@ -77,7 +77,8 @@ def evaluate(matches: Path, ground_truth: Path, threshold: float) -> None:
     precision, recall_curve, _ = compute_precision_recall(
         match_data["scores"][:, 0], indices[:, 0], gt
     )
-    click.echo(f"Average Precision: {np.trapz(precision, recall_curve):.4f}")
+    _trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    click.echo(f"Average Precision: {_trapz(precision, recall_curve):.4f}")
 
 
 @cli.command()

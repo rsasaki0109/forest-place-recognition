@@ -166,7 +166,8 @@ def average_precision(
     prec, rec, _ = compute_precision_recall(scores, top1_indices, ground_truth)
     if len(prec) == 0:
         return 0.0
-    return float(np.trapz(prec, rec))
+    _trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    return float(_trapz(prec, rec))
 
 
 def recall_at_multiple_k(
