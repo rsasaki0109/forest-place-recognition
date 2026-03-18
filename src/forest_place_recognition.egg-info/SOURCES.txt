@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/forest_place_recognition/__init__.py
+src/forest_place_recognition/cli.py
+src/forest_place_recognition/evaluation.py
+src/forest_place_recognition/features.py
+src/forest_place_recognition/loader.py
+src/forest_place_recognition/matcher.py
+src/forest_place_recognition.egg-info/PKG-INFO
+src/forest_place_recognition.egg-info/SOURCES.txt
+src/forest_place_recognition.egg-info/dependency_links.txt
+src/forest_place_recognition.egg-info/entry_points.txt
+src/forest_place_recognition.egg-info/requires.txt
+src/forest_place_recognition.egg-info/top_level.txt

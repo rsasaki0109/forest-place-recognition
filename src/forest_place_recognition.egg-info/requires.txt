@@ -1,0 +1,7 @@
+numpy
+torch
+torchvision
+click
+matplotlib
+opencv-python
+scikit-learn

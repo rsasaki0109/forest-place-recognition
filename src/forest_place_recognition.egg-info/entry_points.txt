@@ -1,0 +1,2 @@
+[console_scripts]
+forest-pr = forest_place_recognition.cli:cli
