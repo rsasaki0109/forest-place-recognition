@@ -76,7 +76,7 @@ class FeatureExtractor:
         # Backbone: use ResNet-18 conv layers (pretrained weights)
         import torchvision.models as models
 
-        resnet = models.resnet18(weights=None)  # no download in stub mode
+        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
         # Remove the final FC and avgpool -- keep conv features
         self.backbone = nn.Sequential(*list(resnet.children())[:-2]).to(self.device)
         self.backbone.eval()
