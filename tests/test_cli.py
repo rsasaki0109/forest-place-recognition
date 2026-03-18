@@ -23,7 +23,7 @@ class TestCLIGroup:
         """--help should succeed and show usage."""
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
-        assert "Season-invariant" in result.output
+        assert "Forest VPR Benchmark" in result.output
 
     def test_version(self, runner: CliRunner):
         """--version should succeed."""

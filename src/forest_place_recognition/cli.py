@@ -5,19 +5,28 @@ from pathlib import Path
 import click
 import numpy as np
 
+from .backends import BACKEND_NAMES
+
 
 @click.group()
 @click.version_option()
 def cli() -> None:
-    """Season-invariant visual place recognition for forest environments."""
+    """Forest VPR Benchmark -- compare visual place recognition methods on forest/seasonal data."""
 
 
 @cli.command()
 @click.argument("image_dir", type=click.Path(exists=True, path_type=Path))
 @click.option("--output", "-o", type=click.Path(path_type=Path), required=True, help="Output path for feature descriptors (.npy)")
 @click.option("--batch-size", default=16, show_default=True, help="Batch size for feature extraction")
-@click.option("--descriptor-dim", default=4096, show_default=True, help="Descriptor dimensionality")
-def extract(image_dir: Path, output: Path, batch_size: int, descriptor_dim: int) -> None:
+@click.option("--descriptor-dim", default=4096, show_default=True, help="Descriptor dimensionality (legacy backend only)")
+@click.option(
+    "--backend", "-b",
+    type=click.Choice(BACKEND_NAMES, case_sensitive=False),
+    default="resnet_gem",
+    show_default=True,
+    help="VPR backend to use for feature extraction",
+)
+def extract(image_dir: Path, output: Path, batch_size: int, descriptor_dim: int, backend: str) -> None:
     """Extract global descriptors from a directory of images."""
     from .features import FeatureExtractor
     from .loader import load_images
@@ -25,8 +34,12 @@ def extract(image_dir: Path, output: Path, batch_size: int, descriptor_dim: int)
     click.echo(f"Loading images from {image_dir}")
     image_paths = load_images(image_dir)
     click.echo(f"Found {len(image_paths)} images")
+    click.echo(f"Backend: {backend}")
 
-    extractor = FeatureExtractor(descriptor_dim=descriptor_dim)
+    extractor = FeatureExtractor(
+        descriptor_dim=descriptor_dim,
+        backend=backend,
+    )
     descriptors = extractor.extract_batch(image_paths, batch_size=batch_size)
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -128,3 +141,94 @@ def visualize(query_dir: Path, ref_dir: Path, matches: Path, num_examples: int, 
         click.echo(f"Saved visualization to {output}")
     else:
         plt.show()
+
+
+@cli.command()
+@click.argument("image_dir", type=click.Path(exists=True, path_type=Path))
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path), default=Path("benchmark_results"), show_default=True, help="Directory for benchmark outputs")
+@click.option("--top-k", default=10, show_default=True, help="Top-K for retrieval evaluation")
+@click.option("--batch-size", default=16, show_default=True, help="Batch size for feature extraction")
+@click.option(
+    "--backends", "-b",
+    multiple=True,
+    default=None,
+    help="Backends to benchmark (default: all available). Can be specified multiple times.",
+)
+def benchmark(image_dir: Path, output_dir: Path, top_k: int, batch_size: int, backends: tuple[str, ...]) -> None:
+    """Run all available backends on a dataset and compare descriptors.
+
+    Extracts features with each backend, performs self-retrieval (query =
+    reference), and reports descriptor dimensionality, extraction time,
+    and basic retrieval statistics.
+    """
+    import time
+
+    from .backends import available_backends, get_backend
+    from .loader import load_images
+
+    image_paths = load_images(image_dir)
+    click.echo(f"Found {len(image_paths)} images in {image_dir}")
+
+    if backends:
+        backend_names = list(backends)
+    else:
+        backend_names = available_backends()
+
+    click.echo(f"Benchmarking backends: {', '.join(backend_names)}\n")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    results: list[dict] = []
+
+    for name in backend_names:
+        click.echo(f"--- {name} ---")
+        try:
+            backend = get_backend(name)
+        except Exception as e:
+            click.echo(f"  Skipped: {e}")
+            continue
+
+        t0 = time.time()
+        descriptors = backend.extract_batch(image_paths, batch_size=batch_size)
+        elapsed = time.time() - t0
+
+        desc_path = output_dir / f"{name}.npy"
+        np.save(desc_path, descriptors)
+
+        # Self-retrieval: use the same set as query and reference
+        from .matcher import PlaceMatcher
+
+        matcher = PlaceMatcher(top_k=min(top_k, len(image_paths)))
+        indices, scores = matcher.match(descriptors, descriptors)
+
+        # Top-1 self-match accuracy (should be ~1.0 for a sane backend)
+        self_match_acc = float(np.mean(indices[:, 0] == np.arange(len(image_paths))))
+
+        result = {
+            "backend": name,
+            "dim": descriptors.shape[1],
+            "time_s": elapsed,
+            "time_per_image_ms": elapsed / len(image_paths) * 1000,
+            "self_match_acc": self_match_acc,
+            "mean_top1_score": float(np.mean(scores[:, 0])),
+        }
+        results.append(result)
+
+        click.echo(f"  Dim: {result['dim']}")
+        click.echo(f"  Time: {result['time_s']:.2f}s ({result['time_per_image_ms']:.1f} ms/image)")
+        click.echo(f"  Self-match accuracy: {result['self_match_acc']:.4f}")
+        click.echo(f"  Mean top-1 score: {result['mean_top1_score']:.4f}")
+        click.echo()
+
+    # Print comparison table
+    if results:
+        click.echo("=" * 78)
+        click.echo(f"{'Backend':<15} {'Dim':>6} {'Time(s)':>8} {'ms/img':>8} {'Self-Acc':>10} {'Top1-Score':>11}")
+        click.echo("-" * 78)
+        for r in results:
+            click.echo(
+                f"{r['backend']:<15} {r['dim']:>6} {r['time_s']:>8.2f} "
+                f"{r['time_per_image_ms']:>8.1f} {r['self_match_acc']:>10.4f} "
+                f"{r['mean_top1_score']:>11.4f}"
+            )
+        click.echo("=" * 78)

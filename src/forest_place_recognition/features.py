@@ -1,8 +1,8 @@
-"""Feature extraction: NetVLAD-style global descriptors.
+"""Feature extraction: global image descriptors via pluggable backends.
 
-The model itself is a stub (random projection) to be replaced with a
-trained NetVLAD or similar network.  Image preprocessing uses real
-torchvision transforms matching standard ImageNet-normalised pipelines.
+Supports multiple VPR backends (ResNet+GeM, CosPlace, EigenPlaces,
+color histogram) through the :mod:`~.backends` registry.  The legacy
+``NetVLADStub`` is retained for backward compatibility.
 """
 
 from __future__ import annotations
@@ -49,20 +49,41 @@ class NetVLADStub(nn.Module):
 
 
 class FeatureExtractor:
-    """Extract global image descriptors using a CNN backbone + NetVLAD stub."""
+    """Extract global image descriptors using a configurable VPR backend.
+
+    When *backend* is ``None`` the legacy ResNet-18 + NetVLAD stub
+    pipeline is used for backward compatibility.
+    """
 
     def __init__(
         self,
         descriptor_dim: int = 4096,
         image_size: tuple[int, int] = (224, 224),
         device: str | None = None,
+        backend: str | None = None,
     ) -> None:
+        self._backend_name = backend
+
+        if backend is not None:
+            from .backends import get_backend
+
+            kwargs: dict = {}
+            if backend == "resnet_gem":
+                kwargs["device"] = device
+            elif backend == "histogram":
+                pass  # no device needed
+            else:
+                kwargs["device"] = device
+            self._backend = get_backend(backend, **kwargs)
+            self.descriptor_dim = self._backend.descriptor_dim
+            return
+
+        # Legacy path: ResNet-18 + NetVLAD stub
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
         self.descriptor_dim = descriptor_dim
 
-        # Standard ImageNet preprocessing
         self.transform = transforms.Compose([
             transforms.Resize(image_size),
             transforms.CenterCrop(image_size),
@@ -73,11 +94,9 @@ class FeatureExtractor:
             ),
         ])
 
-        # Backbone: use ResNet-18 conv layers (pretrained weights)
         import torchvision.models as models
 
         resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        # Remove the final FC and avgpool -- keep conv features
         self.backbone = nn.Sequential(*list(resnet.children())[:-2]).to(self.device)
         self.backbone.eval()
 
@@ -101,6 +120,9 @@ class FeatureExtractor:
         np.ndarray
             Descriptor vector of shape ``(descriptor_dim,)``.
         """
+        if self._backend_name is not None:
+            return self._backend.extract(image_path)
+
         tensor = self._load_image(image_path).unsqueeze(0).to(self.device)
         features = self.backbone(tensor)
         descriptor = self.head(features)
@@ -119,6 +141,9 @@ class FeatureExtractor:
         np.ndarray
             Array of shape ``(N, descriptor_dim)``.
         """
+        if self._backend_name is not None:
+            return self._backend.extract_batch(image_paths, batch_size=batch_size)
+
         all_descriptors: list[np.ndarray] = []
 
         for start in range(0, len(image_paths), batch_size):

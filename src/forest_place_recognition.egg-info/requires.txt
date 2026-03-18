@@ -5,3 +5,7 @@ click
 matplotlib
 opencv-python
 scikit-learn
+
+[test]
+pytest>=7.0
+Pillow

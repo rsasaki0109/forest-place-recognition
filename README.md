@@ -1,26 +1,21 @@
-# forest-place-recognition
+# Forest VPR Benchmark
 
 [![CI](https://github.com/rsasaki0109/forest-place-recognition/actions/workflows/ci.yml/badge.svg)](https://github.com/rsasaki0109/forest-place-recognition/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Season-invariant visual place recognition for forest environments, designed for the [FinnForest](https://etsin.fairdata.fi/dataset/629a8b36-4c6d-4925-8a05-3be156f7b607) dataset (2020).
+A benchmark framework for comparing Visual Place Recognition (VPR) methods in forest and seasonal environments, designed for the [FinnForest](https://etsin.fairdata.fi/dataset/629a8b36-4c6d-4925-8a05-3be156f7b607) dataset (2020).
 
-FinnForest provides summer and winter sequences of the same forest/sub-urban routes captured with 4x Basler RGB cameras (40 Hz), KVH 1750 IMU (200 Hz), and NovAtel GNSS (100 Hz).
+## Supported Backends
 
-## Pipeline
+| Backend        | Description                                   | Dependencies     | Descriptor Dim |
+|----------------|-----------------------------------------------|------------------|----------------|
+| `resnet_gem`   | ResNet-18/50 + Generalized Mean Pooling       | torch, torchvision | 512 / 2048   |
+| `histogram`    | HSV color histogram baseline                  | opencv, numpy    | 80             |
+| `cosplace`     | CosPlace (Berton et al., 2022)                | cosplace (opt.)  | 2048           |
+| `eigenplaces`  | EigenPlaces (Berton et al., 2023)             | torch.hub (opt.) | 2048           |
 
-The system performs season-invariant place recognition in three stages:
-
-1. **Feature Extraction** -- Images are preprocessed with standard ImageNet normalization and passed through a ResNet-18 backbone (pretrained on ImageNet). The convolutional feature maps are aggregated by a NetVLAD-style stub head (global average pooling + linear projection) to produce compact, L2-normalized global descriptors.
-
-2. **Place Matching** -- Query descriptors (e.g., winter images) are compared against a reference database (e.g., summer images) using cosine similarity. A top-K retrieval step efficiently selects the most similar reference places for each query. An optional two-stage re-ranking pipeline first retrieves a broad candidate set and then refines the ranking.
-
-3. **Evaluation** -- Match quality is measured with standard retrieval metrics:
-   - **Recall@K** (K=1, 5, 10): fraction of queries with a correct match in the top-K results.
-   - **Precision-Recall curve**: obtained by sweeping the similarity score threshold.
-   - **Average Precision (AP)**: area under the precision-recall curve.
-   - GPS-based evaluation uses Haversine distance with a configurable threshold (default 25 m).
+All backends share a common interface: `extract(image_path) -> np.ndarray`.
 
 ## Installation
 
@@ -34,42 +29,101 @@ For development/testing:
 pip install -e ".[test]"
 ```
 
-## Usage
-
-### 1. Extract features
+Optional backends:
 
 ```bash
+pip install cosplace       # for CosPlace
+# EigenPlaces loads via torch.hub (no extra install)
+```
+
+## Quick Start
+
+### Single backend
+
+```bash
+# Extract features with ResNet+GeM (default)
 forest-pr extract path/to/summer/images -o features/summer.npy
-forest-pr extract path/to/winter/images -o features/winter.npy
+
+# Extract with color histogram baseline
+forest-pr extract path/to/images -o features/hist.npy --backend histogram
 ```
 
-### 2. Match places across seasons
+### Benchmark all backends
 
 ```bash
+forest-pr benchmark path/to/images -o benchmark_results/
+```
+
+Output:
+
+```
+==============================================================================
+Backend              Dim   Time(s)   ms/img   Self-Acc   Top1-Score
+------------------------------------------------------------------------------
+resnet_gem           512      3.21     32.1     1.0000       1.0000
+histogram             80      0.15      1.5     1.0000       1.0000
+==============================================================================
+```
+
+### Full pipeline
+
+```bash
+# 1. Extract features
+forest-pr extract path/to/summer/images -o features/summer.npy --backend resnet_gem
+forest-pr extract path/to/winter/images -o features/winter.npy --backend resnet_gem
+
+# 2. Match places across seasons
 forest-pr match -q features/winter.npy -r features/summer.npy -o results/matches.npz --top-k 10
-```
 
-### 3. Evaluate
-
-```bash
+# 3. Evaluate
 forest-pr evaluate -m results/matches.npz -g ground_truth.npy --threshold 25
+
+# 4. Visualize matches
+forest-pr visualize -q path/to/winter/images -r path/to/summer/images -m results/matches.npz -o results/vis.png
 ```
 
-### 4. Visualize matches
+## Adding a Custom Backend
 
-```bash
-forest-pr visualize -q path/to/winter/images -r path/to/summer/images -m results/matches.npz -o results/vis.png
+1. Create a new module in `src/forest_place_recognition/backends/`:
+
+```python
+# my_backend.py
+from pathlib import Path
+import numpy as np
+
+class MyBackend:
+    @property
+    def descriptor_dim(self) -> int:
+        return 256
+
+    def extract(self, image_path: Path) -> np.ndarray:
+        # Your feature extraction logic here
+        ...
+
+    def extract_batch(self, image_paths: list[Path], batch_size: int = 16) -> np.ndarray:
+        return np.stack([self.extract(p) for p in image_paths])
+```
+
+2. Register it in `backends/__init__.py`:
+
+```python
+_BACKENDS["my_backend"] = (
+    "forest_place_recognition.backends.my_backend",
+    "MyBackend",
+    False,  # True if it requires an optional dependency
+)
 ```
 
 ## Architecture
 
 | Module         | Description                                                       |
 |----------------|-------------------------------------------------------------------|
+| `backends`     | Pluggable VPR feature extraction backends                         |
 | `loader`       | Load FinnForest image sequences and GPS ground truth              |
-| `features`     | ResNet-18 backbone + NetVLAD stub for global descriptor extraction |
+| `features`     | Unified FeatureExtractor with backend selection                   |
 | `matcher`      | Cosine similarity search with top-K retrieval and re-ranking      |
 | `evaluation`   | Recall@K, precision-recall curves, average precision              |
-| `cli`          | Click-based command-line interface for all pipeline stages        |
+| `cli`          | Click-based CLI: extract, match, evaluate, visualize, benchmark   |
 
 ## Evaluation Metrics
 
