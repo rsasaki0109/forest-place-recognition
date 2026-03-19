@@ -2,11 +2,13 @@ LICENSE
 README.md
 pyproject.toml
 src/forest_place_recognition/__init__.py
+src/forest_place_recognition/augmentation.py
 src/forest_place_recognition/cli.py
 src/forest_place_recognition/evaluation.py
 src/forest_place_recognition/features.py
 src/forest_place_recognition/loader.py
 src/forest_place_recognition/matcher.py
+src/forest_place_recognition/seasonal.py
 src/forest_place_recognition.egg-info/PKG-INFO
 src/forest_place_recognition.egg-info/SOURCES.txt
 src/forest_place_recognition.egg-info/dependency_links.txt
@@ -19,9 +21,11 @@ src/forest_place_recognition/backends/color_histogram.py
 src/forest_place_recognition/backends/cosplace.py
 src/forest_place_recognition/backends/eigenplaces.py
 src/forest_place_recognition/backends/resnet_gem.py
+tests/test_augmentation.py
 tests/test_backends.py
 tests/test_benchmark.py
 tests/test_cli.py
 tests/test_evaluation.py
 tests/test_features.py
 tests/test_matcher.py
+tests/test_seasonal.py

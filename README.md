@@ -1,10 +1,23 @@
-# Forest VPR Benchmark
+# Cross-Season Place Recognition
 
 [![CI](https://github.com/rsasaki0109/forest-place-recognition/actions/workflows/ci.yml/badge.svg)](https://github.com/rsasaki0109/forest-place-recognition/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A benchmark framework for comparing Visual Place Recognition (VPR) methods in forest and seasonal environments, designed for the [FinnForest](https://etsin.fairdata.fi/dataset/629a8b36-4c6d-4925-8a05-3be156f7b607) dataset (2020).
+A benchmark framework for cross-season visual place recognition in forest environments. Unlike generic VPR benchmarks, this project focuses on **cross-season matching** -- evaluating how well descriptors handle the drastic appearance changes between summer and winter in forested areas. Designed for the [FinnForest](https://etsin.fairdata.fi/dataset/629a8b36-4c6d-4925-8a05-3be156f7b607) dataset (2020).
+
+### Seasonal Analysis Plots
+
+The `seasonal` command produces a two-panel analysis figure:
+
+| Panel | Content |
+|-------|---------|
+| Descriptor distance histogram | Same-place cross-season pairs (d+) vs different-place pairs (d-) |
+| Recall@K curve | Cross-season retrieval accuracy at various K values |
+
+```bash
+forest-pr seasonal --summer features/summer.npy --winter features/winter.npy --gt pairs.csv -o analysis.png
+```
 
 ## Supported Backends
 
@@ -65,6 +78,18 @@ histogram             80      0.15      1.5     1.0000       1.0000
 ==============================================================================
 ```
 
+### Cross-season evaluation
+
+```bash
+# Direct cross-season evaluation from descriptors
+forest-pr seasonal --summer features/summer.npy --winter features/winter.npy --gt pairs.csv -b resnet_gem
+
+# Or from image directories (extracts features automatically)
+forest-pr seasonal --summer path/to/summer/images --winter path/to/winter/images --gt pairs.csv -o results/season_analysis.png
+```
+
+The ground-truth CSV has columns `summer_idx,winter_idx` listing matching place indices.
+
 ### Full pipeline
 
 ```bash
@@ -116,14 +141,16 @@ _BACKENDS["my_backend"] = (
 
 ## Architecture
 
-| Module         | Description                                                       |
-|----------------|-------------------------------------------------------------------|
-| `backends`     | Pluggable VPR feature extraction backends                         |
-| `loader`       | Load FinnForest image sequences and GPS ground truth              |
-| `features`     | Unified FeatureExtractor with backend selection                   |
-| `matcher`      | Cosine similarity search with top-K retrieval and re-ranking      |
-| `evaluation`   | Recall@K, precision-recall curves, average precision              |
-| `cli`          | Click-based CLI: extract, match, evaluate, visualize, benchmark   |
+| Module         | Description                                                                |
+|----------------|----------------------------------------------------------------------------|
+| `backends`     | Pluggable VPR feature extraction backends                                  |
+| `loader`       | Load FinnForest image sequences and GPS ground truth                       |
+| `features`     | Unified FeatureExtractor with backend selection                            |
+| `matcher`      | Cosine similarity search with top-K retrieval and re-ranking               |
+| `evaluation`   | Recall@K, precision-recall curves, average precision                       |
+| `seasonal`     | Cross-season evaluator: season gap, descriptor shift, hardest-pair analysis|
+| `augmentation` | Simulate seasonal appearance changes (summer/winter colour transforms)     |
+| `cli`          | Click-based CLI: extract, match, evaluate, visualize, seasonal, benchmark  |
 
 ## Evaluation Metrics
 
@@ -133,6 +160,9 @@ _BACKENDS["my_backend"] = (
 | Precision-Recall    | Trade-off curve by varying the similarity score threshold         |
 | Average Precision   | Area under the precision-recall curve (single scalar summary)     |
 | GPS-based Recall    | Recall computed using Haversine distance between query/ref GPS    |
+| Cross-Season Recall | Recall@K specifically for winter-query / summer-reference pairs   |
+| Season Gap          | Ratio of mean different-place distance to mean same-place cross-season distance (d-/d+) |
+| Descriptor Shift    | Mean L2 distance between same-place descriptors across seasons    |
 
 ## License
 

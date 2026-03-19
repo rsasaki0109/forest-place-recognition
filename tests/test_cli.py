@@ -107,6 +107,46 @@ class TestEvaluateCommand:
         assert "Recall@1" in result.output
 
 
+class TestSeasonalCommand:
+    """Tests for the 'seasonal' subcommand."""
+
+    def test_help(self, runner: CliRunner):
+        result = runner.invoke(cli, ["seasonal", "--help"])
+        assert result.exit_code == 0
+        assert "--summer" in result.output
+        assert "--winter" in result.output
+        assert "--gt" in result.output
+
+    def test_seasonal_with_npy(self, runner: CliRunner, tmp_path: Path):
+        """Seasonal command should compute cross-season metrics from .npy files."""
+        rng = np.random.default_rng(0)
+        n = 10
+        dim = 32
+        summer = rng.standard_normal((n, dim)).astype(np.float32)
+        winter = summer + rng.standard_normal((n, dim)).astype(np.float32) * 0.1
+
+        s_path = tmp_path / "summer.npy"
+        w_path = tmp_path / "winter.npy"
+        np.save(s_path, summer)
+        np.save(w_path, winter)
+
+        gt_path = tmp_path / "gt.csv"
+        with open(gt_path, "w") as f:
+            f.write("summer_idx,winter_idx\n")
+            for i in range(n):
+                f.write(f"{i},{i}\n")
+
+        result = runner.invoke(cli, [
+            "seasonal",
+            "--summer", str(s_path),
+            "--winter", str(w_path),
+            "--gt", str(gt_path),
+        ])
+        assert result.exit_code == 0, result.output
+        assert "Recall@1" in result.output
+        assert "Season gap" in result.output
+
+
 class TestVisualizeCommand:
     """Tests for the 'visualize' subcommand."""
 

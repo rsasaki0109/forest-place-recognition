@@ -144,6 +144,72 @@ def visualize(query_dir: Path, ref_dir: Path, matches: Path, num_examples: int, 
 
 
 @cli.command()
+@click.option("--summer", type=click.Path(exists=True, path_type=Path), required=True, help="Summer descriptors (.npy) or image directory")
+@click.option("--winter", type=click.Path(exists=True, path_type=Path), required=True, help="Winter descriptors (.npy) or image directory")
+@click.option("--gt", type=click.Path(exists=True, path_type=Path), required=True, help="Ground-truth pairs CSV (columns: summer_idx, winter_idx)")
+@click.option(
+    "--backend", "-b",
+    type=click.Choice(BACKEND_NAMES, case_sensitive=False),
+    default="resnet_gem",
+    show_default=True,
+    help="VPR backend (used when --summer/--winter are image directories)",
+)
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None, help="Save analysis figure to file")
+@click.option("--batch-size", default=16, show_default=True, help="Batch size for feature extraction")
+def seasonal(summer: Path, winter: Path, gt: Path, backend: str, output: Path | None, batch_size: int) -> None:
+    """Run cross-season evaluation and produce a seasonal analysis report."""
+    import csv
+
+    from .seasonal import SeasonalEvaluator, plot_season_analysis
+
+    # Load or extract descriptors
+    def _load_descs(path: Path) -> np.ndarray:
+        if path.suffix == ".npy":
+            return np.load(path)
+        # Treat as image directory — extract features
+        from .features import FeatureExtractor
+        from .loader import load_images
+
+        click.echo(f"Extracting features from {path} (backend={backend})")
+        extractor = FeatureExtractor(backend=backend)
+        images = load_images(path)
+        return extractor.extract_batch(images, batch_size=batch_size)
+
+    summer_descs = _load_descs(summer)
+    winter_descs = _load_descs(winter)
+
+    # Load ground-truth pairs from CSV
+    pairs: list[list[int]] = []
+    with open(gt) as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        for row in reader:
+            pairs.append([int(row[0]), int(row[1])])
+    gt_pairs = np.array(pairs, dtype=int)
+
+    click.echo(f"Summer descriptors: {summer_descs.shape}")
+    click.echo(f"Winter descriptors: {winter_descs.shape}")
+    click.echo(f"Ground-truth pairs: {len(gt_pairs)}")
+
+    evaluator = SeasonalEvaluator()
+    report = evaluator.full_report(summer_descs, winter_descs, gt_pairs)
+
+    click.echo(f"\nDescriptor shift (mean d+): {report.descriptor_shift:.4f}")
+    click.echo(f"Season gap (mean d- / mean d+): {report.season_gap:.4f}")
+    for k, r in sorted(report.recall_at_k.items()):
+        click.echo(f"Recall@{k}: {r:.4f}")
+
+    if report.hardest_pairs.shape[0] > 0:
+        click.echo(f"\nTop-5 hardest same-place pairs (summer_idx, winter_idx):")
+        for row in report.hardest_pairs[:5]:
+            click.echo(f"  {row[0]}, {row[1]}")
+
+    if output is not None:
+        plot_season_analysis(report, output)
+        click.echo(f"\nSaved analysis figure to {output}")
+
+
+@cli.command()
 @click.argument("image_dir", type=click.Path(exists=True, path_type=Path))
 @click.option("--output-dir", "-o", type=click.Path(path_type=Path), default=Path("benchmark_results"), show_default=True, help="Directory for benchmark outputs")
 @click.option("--top-k", default=10, show_default=True, help="Top-K for retrieval evaluation")
