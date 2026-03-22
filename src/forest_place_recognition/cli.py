@@ -48,12 +48,12 @@ def extract(image_dir: Path, output: Path, batch_size: int, descriptor_dim: int,
 
 
 @cli.command()
-@click.option("--query", "-q", type=click.Path(exists=True, path_type=Path), required=True, help="Query descriptors (.npy)")
-@click.option("--reference", "-r", type=click.Path(exists=True, path_type=Path), required=True, help="Reference descriptors (.npy)")
+@click.argument("query", type=click.Path(exists=True, path_type=Path))
+@click.argument("reference", type=click.Path(exists=True, path_type=Path))
 @click.option("--output", "-o", type=click.Path(path_type=Path), required=True, help="Output match results (.npz)")
-@click.option("--top-k", default=10, show_default=True, help="Number of top matches to retrieve")
+@click.option("--top-k", "-k", default=10, show_default=True, help="Number of top matches to retrieve")
 def match(query: Path, reference: Path, output: Path, top_k: int) -> None:
-    """Match places between query and reference descriptor sets."""
+    """Match places between QUERY and REFERENCE descriptor sets (.npy)."""
     from .matcher import PlaceMatcher
 
     query_desc = np.load(query)

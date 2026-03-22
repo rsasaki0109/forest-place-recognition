@@ -65,10 +65,10 @@ class TestMatchCommand:
 
         result = runner.invoke(cli, [
             "match",
-            "-q", str(q_path),
-            "-r", str(r_path),
+            str(q_path),
+            str(r_path),
             "-o", str(out_path),
-            "--top-k", "3",
+            "-k", "3",
         ])
         assert result.exit_code == 0, result.output
         assert out_path.exists()
